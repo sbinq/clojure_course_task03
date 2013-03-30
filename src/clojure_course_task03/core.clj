@@ -1,5 +1,6 @@
 (ns clojure-course-task03.core
-  (:require [clojure.set]))
+  (:require [clojure.set]
+            [clojure.string :as s]))
 
 (defn join* [table-name conds]
   (let [op (first conds)
@@ -111,7 +112,6 @@
           (limit 5)
           (offset 5)))
 
-
 (comment
   ;; Описание и примеры использования DSL
   ;; ------------------------------------
@@ -207,7 +207,9 @@
 ;; TBD: Implement the following macros
 ;;
 
-(defmacro group [name & body]
+(def group-tables (atom {}))
+
+(defmacro group [group-sym & body]
   ;; Пример
   ;; (group Agent
   ;;      proposal -> [person, phone, address, price]
@@ -218,18 +220,48 @@
   ;; 3) Создает следующие функции
   ;;    (select-agent-proposal) ;; select person, phone, address, price from proposal;
   ;;    (select-agent-agents)  ;; select clients_id, proposal_id, agent from agents;
-  )
+  (let [group-kw (keyword group-sym)
+        table-columns (reduce (fn [m [table arrow columns]]
+                                (assert (= '-> arrow) (str "Expected symbol -> instead of " arrow))
+                                (assoc m (keyword table) (mapv keyword columns)))
+                              {} (partition-all 3 body))
+        group-select-fns (map (fn [[table columns]]
+                                (let [fn-sym (symbol (s/join "-" ["select" (s/lower-case (name group-kw)) (name table)]))
+                                      fields-var-sym (symbol (s/join "-" [(name table) "fields-var"]))
+                                      table-sym (symbol (name table))]
+                                  `(defn ~fn-sym []
+                                     (let [~fields-var-sym ~columns]
+                                       (select ~table-sym
+                                               (~(symbol "fields") ~@columns))))))
+                              table-columns)]
+    `(do
+       ~@group-select-fns
+       (swap! group-tables assoc ~group-kw ~table-columns)))) ; saving this for further use by user macro
 
-(defmacro user [name & body]
+
+(def ^:dynamic *user-tables-vars* (atom {}))
+
+(defmacro user [user-sym [belongs-to-sym & group-syms]]
   ;; Пример
   ;; (user Ivanov
   ;;     (belongs-to Agent))
   ;; Создает переменные Ivanov-proposal-fields-var = [:person, :phone, :address, :price]
   ;; и Ivanov-agents-fields-var = [:clients_id, :proposal_id, :agent]
   ;; Сохраняет эти же переменные в атоме *user-tables-vars*.
-  )
+  (assert (= 'belongs-to belongs-to-sym) (str "Expected symbol belongs-to instead of " belongs-to-sym))
+  (let [user-tables (map @group-tables (map keyword group-syms))
+        merged-tables (apply merge-with
+                             #(let [columns-set (into #{} (concat %1 %2))]
+                                (if (contains? columns-set :all)
+                                  [:all]
+                                  (vec columns-set)))
+                             user-tables)
+        var-map (into {} (map (fn [[table columns]]
+                                [(keyword (s/join "-" [(name user-sym) (name table) "fields-var"])) columns])
+                              merged-tables))]
+    `(swap! *user-tables-vars* merge ~var-map)))
 
-(defmacro with-user [name & body]
+(defmacro with-user [user-sym & body]
   ;; Пример
   ;; (with-user Ivanov
   ;;   . . .)
@@ -239,4 +271,12 @@
   ;;    proposal-fields-var и agents-fields-var.
   ;;    Таким образом, функция select, вызванная внутри with-user, получает
   ;;    доступ ко всем необходимым переменным вида <table-name>-fields-var.
-  )
+  (let [all-users-tables-vars @*user-tables-vars*
+        user-table-vars (select-keys all-users-tables-vars
+                                     (filter #(.startsWith (name %) (name user-sym))
+                                             (keys all-users-tables-vars)))
+        syms-to-values (into {} (map (fn [[kw val]]
+                                       [(symbol (.substring (name kw) (inc (count (name user-sym))))) val])
+                                     user-table-vars))]
+    `(let [~@(apply concat (seq syms-to-values))]
+       ~@body)))
