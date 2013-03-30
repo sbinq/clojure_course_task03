@@ -204,22 +204,10 @@
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; TBD: Implement the following macros
-;;
 
 (def group-tables (atom {}))
 
 (defmacro group [group-sym & body]
-  ;; Пример
-  ;; (group Agent
-  ;;      proposal -> [person, phone, address, price]
-  ;;      agents -> [clients_id, proposal_id, agent])
-  ;; 1) Создает группу Agent
-  ;; 2) Запоминает, какие таблицы (и какие колонки в таблицах)
-  ;;    разрешены в данной группе.
-  ;; 3) Создает следующие функции
-  ;;    (select-agent-proposal) ;; select person, phone, address, price from proposal;
-  ;;    (select-agent-agents)  ;; select clients_id, proposal_id, agent from agents;
   (let [group-kw (keyword group-sym)
         table-columns (reduce (fn [m [table arrow columns]]
                                 (assert (= '-> arrow) (str "Expected symbol -> instead of " arrow))
@@ -242,12 +230,6 @@
 (def ^:dynamic *user-tables-vars* (atom {}))
 
 (defmacro user [user-sym [belongs-to-sym & group-syms]]
-  ;; Пример
-  ;; (user Ivanov
-  ;;     (belongs-to Agent))
-  ;; Создает переменные Ivanov-proposal-fields-var = [:person, :phone, :address, :price]
-  ;; и Ivanov-agents-fields-var = [:clients_id, :proposal_id, :agent]
-  ;; Сохраняет эти же переменные в атоме *user-tables-vars*.
   (assert (= 'belongs-to belongs-to-sym) (str "Expected symbol belongs-to instead of " belongs-to-sym))
   (let [user-tables (map @group-tables (map keyword group-syms))
         merged-tables (apply merge-with
@@ -262,15 +244,6 @@
     `(swap! *user-tables-vars* merge ~var-map)))
 
 (defmacro with-user [user-sym & body]
-  ;; Пример
-  ;; (with-user Ivanov
-  ;;   . . .)
-  ;; 1) Находит все переменные, начинающиеся со слова Ivanov, в *user-tables-vars*
-  ;;    (Ivanov-proposal-fields-var и Ivanov-agents-fields-var)
-  ;; 2) Создает локальные привязки без префикса Ivanov-:
-  ;;    proposal-fields-var и agents-fields-var.
-  ;;    Таким образом, функция select, вызванная внутри with-user, получает
-  ;;    доступ ко всем необходимым переменным вида <table-name>-fields-var.
   (let [all-users-tables-vars @*user-tables-vars*
         user-table-vars (select-keys all-users-tables-vars
                                      (filter #(.startsWith (name %) (name user-sym))
