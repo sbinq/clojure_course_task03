@@ -209,14 +209,15 @@
 
 (defmacro group [group-sym & body]
   (let [group-kw (keyword group-sym)
-        table-columns (reduce (fn [m [table arrow columns]]
-                                (assert (= '-> arrow) (str "Expected symbol -> instead of " arrow))
-                                (assoc m (keyword table) (mapv keyword columns)))
-                              {} (partition-all 3 body))
-        group-select-fns (map (fn [[table columns]]
-                                (let [fn-sym (symbol (s/join "-" ["select" (s/lower-case (name group-kw)) (name table)]))
-                                      fields-var-sym (symbol (s/join "-" [(name table) "fields-var"]))
-                                      table-sym (symbol (name table))]
+        table-columns (into {} (map (fn [[table arrow columns]]
+                                      (assert (= '-> arrow) (str "Expected symbol -> instead of " arrow))
+                                      [(keyword table) (mapv keyword columns)])
+                                    (partition-all 3 body)))
+        group-select-fns (map (fn [[table-kw columns]]
+                                (let [table-name (name table-kw)
+                                      fn-sym (symbol (str "select-" (s/lower-case (name group-kw)) "-" table-name))
+                                      fields-var-sym (symbol (str table-name "-fields-var"))
+                                      table-sym (symbol table-name)]
                                   `(defn ~fn-sym []
                                      (let [~fields-var-sym ~columns]
                                        (select ~table-sym
@@ -231,25 +232,26 @@
 
 (defmacro user [user-sym [belongs-to-sym & group-syms]]
   (assert (= 'belongs-to belongs-to-sym) (str "Expected symbol belongs-to instead of " belongs-to-sym))
-  (let [user-tables (map @group-tables (map keyword group-syms))
-        merged-tables (apply merge-with
-                             #(let [columns-set (into #{} (concat %1 %2))]
-                                (if (contains? columns-set :all)
-                                  [:all]
-                                  (vec columns-set)))
-                             user-tables)
-        var-map (into {} (map (fn [[table columns]]
-                                [(keyword (s/join "-" [(name user-sym) (name table) "fields-var"])) columns])
-                              merged-tables))]
-    `(swap! *user-tables-vars* merge ~var-map)))
+  (let [group-table-maps (map @group-tables (map keyword group-syms))
+        merged-table-map (apply merge-with
+                                #(let [columns-set (into #{} (concat %1 %2))]
+                                   (if (contains? columns-set :all)
+                                     [:all]
+                                     (vec columns-set)))
+                                group-table-maps)
+        user-table-fields-var-map (into {} (for [[table columns] merged-table-map]
+                                             [(keyword (str (name user-sym) "-" (name table) "-fields-var"))
+                                              columns]))]
+    `(swap! *user-tables-vars* merge ~user-table-fields-var-map)))
 
 (defmacro with-user [user-sym & body]
   (let [all-users-tables-vars @*user-tables-vars*
         user-table-vars (select-keys all-users-tables-vars
-                                     (filter #(.startsWith (name %) (name user-sym))
+                                     (filter #(.startsWith (str (name %) "-") (name user-sym))
                                              (keys all-users-tables-vars)))
-        syms-to-values (into {} (map (fn [[kw val]]
-                                       [(symbol (.substring (name kw) (inc (count (name user-sym))))) val])
-                                     user-table-vars))]
-    `(let [~@(apply concat (seq syms-to-values))]
+        syms-with-values (for [[kw val] user-table-vars]
+                           [(symbol (.substring (name kw)
+                                                (inc (count (name user-sym)))))
+                            val])]
+    `(let [~@(apply concat syms-with-values)]
        ~@body)))
