@@ -228,11 +228,11 @@
        (swap! group-tables assoc ~group-kw ~table-columns)))) ; saving this for further use by user macro
 
 
-(def ^:dynamic *user-tables-vars* (atom {}))
+(def user-tables-vars (atom {}))
 
 (defmacro user [user-sym [belongs-to-sym & group-syms]]
   (assert (= 'belongs-to belongs-to-sym) (str "Expected symbol belongs-to instead of " belongs-to-sym))
-  (let [group-table-maps (map @group-tables (map keyword group-syms))
+  (let [group-table-maps (vals (select-keys @group-tables (map keyword group-syms)))
         merged-table-map (apply merge-with
                                 #(let [columns-set (into #{} (concat %1 %2))]
                                    (if (contains? columns-set :all)
@@ -242,10 +242,10 @@
         user-table-fields-var-map (into {} (for [[table columns] merged-table-map]
                                              [(keyword (str (name user-sym) "-" (name table) "-fields-var"))
                                               columns]))]
-    `(swap! *user-tables-vars* merge ~user-table-fields-var-map)))
+    `(swap! user-tables-vars merge ~user-table-fields-var-map)))
 
 (defmacro with-user [user-sym & body]
-  (let [all-users-tables-vars @*user-tables-vars*
+  (let [all-users-tables-vars @user-tables-vars
         user-table-vars (select-keys all-users-tables-vars
                                      (filter #(.startsWith (str (name %) "-") (name user-sym))
                                              (keys all-users-tables-vars)))
