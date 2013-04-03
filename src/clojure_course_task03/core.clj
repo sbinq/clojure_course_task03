@@ -205,14 +205,14 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defonce group-tables (atom {}))
+(defonce groups-tables-columns (atom {}))
 
 (defmacro group [group-sym & body]
   (let [group-kw (keyword group-sym)
-        table-columns (into {} (map (fn [[table arrow columns]]
-                                      (assert (= '-> arrow) (str "Expected symbol -> instead of " arrow))
-                                      [(keyword table) (mapv keyword columns)])
-                                    (partition-all 3 body)))
+        tables-columns (into {} (map (fn [[table arrow columns]]
+                                       (assert (= '-> arrow) (str "Expected symbol -> instead of " arrow))
+                                       [(keyword table) (mapv keyword columns)])
+                                     (partition-all 3 body)))
         group-select-fns (map (fn [[table-kw columns]]
                                 (let [table-name (name table-kw)
                                       fn-sym (symbol (str "select-" (s/lower-case (name group-kw)) "-" table-name))
@@ -222,17 +222,17 @@
                                      (let [~fields-var-sym ~columns]
                                        (select ~table-sym
                                                (~(symbol "fields") ~@columns))))))
-                              table-columns)]
+                              tables-columns)]
     `(do
        ~@group-select-fns
-       (swap! group-tables assoc ~group-kw ~table-columns)))) ; saving this for further use by user macro
+       (swap! groups-tables-columns assoc ~group-kw ~tables-columns)))) ; saving this for further use by user macro
 
 
 (defonce users-tables-columns (atom {}))
 
 (defmacro user [user-sym [belongs-to-sym & group-syms]]
   (assert (= 'belongs-to belongs-to-sym) (str "Expected symbol belongs-to instead of " belongs-to-sym))
-  (let [group-table-maps (vals (select-keys @group-tables (map keyword group-syms)))
+  (let [group-table-maps (vals (select-keys @groups-tables-columns (map keyword group-syms)))
         merged-table-map (apply merge-with
                                 #(let [columns-set (into #{} (concat %1 %2))]
                                    (if (contains? columns-set :all)
