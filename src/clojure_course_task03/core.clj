@@ -230,7 +230,6 @@
        ~@group-select-fns
        (swap! groups-tables-columns assoc ~group-kw ~tables-columns)))) ; saving this for further use by user macro
 
-
 (defn merge-columns [cols1 cols2]
   (let [columns-set (into #{} (concat cols1 cols2))]
     (if (contains? columns-set :all)
