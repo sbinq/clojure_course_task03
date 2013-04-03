@@ -247,7 +247,7 @@
 (defmacro with-user [user-sym & body]
   (let [all-users-tables-vars @user-tables-vars
         user-table-vars (select-keys all-users-tables-vars
-                                     (filter #(.startsWith (str (name %) "-") (name user-sym))
+                                     (filter #(.startsWith (name %) (str (name user-sym) "-"))
                                              (keys all-users-tables-vars)))
         syms-with-values (for [[kw val] user-table-vars]
                            [(symbol (.substring (name kw)
