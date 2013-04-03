@@ -205,6 +205,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn table-fields-var-sym [table]
+  (symbol (str (name table) "-fields-var")))
+
 (defonce groups-tables-columns (atom {}))
 
 (defmacro group [group-sym & body]
@@ -216,7 +219,7 @@
         group-select-fns (map (fn [[table-kw columns]]
                                 (let [table-name (name table-kw)
                                       fn-sym (symbol (str "select-" (s/lower-case (name group-kw)) "-" table-name))
-                                      fields-var-sym (symbol (str table-name "-fields-var"))
+                                      fields-var-sym (table-fields-var-sym table-name)
                                       table-sym (symbol table-name)]
                                   `(defn ~fn-sym []
                                      (let [~fields-var-sym ~columns]
@@ -244,6 +247,6 @@
 (defmacro with-user [user-sym & body]
   (let [tables-columns (get @users-tables-columns (keyword user-sym))
         table-syms-with-columns (for [[table-kw columns] tables-columns]
-                                  [(symbol (str (name table-kw) "-fields-var")) columns])]
+                                  [(table-fields-var-sym table-kw) columns])]
     `(let [~@(apply concat table-syms-with-columns)]
        ~@body)))
