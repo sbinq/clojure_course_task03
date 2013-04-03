@@ -205,7 +205,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def group-tables (atom {}))
+(defonce group-tables (atom {}))
 
 (defmacro group [group-sym & body]
   (let [group-kw (keyword group-sym)
@@ -228,7 +228,7 @@
        (swap! group-tables assoc ~group-kw ~table-columns)))) ; saving this for further use by user macro
 
 
-(def user-tables-vars (atom {}))
+(defonce users-tables-columns (atom {}))
 
 (defmacro user [user-sym [belongs-to-sym & group-syms]]
   (assert (= 'belongs-to belongs-to-sym) (str "Expected symbol belongs-to instead of " belongs-to-sym))
@@ -238,20 +238,12 @@
                                    (if (contains? columns-set :all)
                                      [:all]
                                      (vec columns-set)))
-                                group-table-maps)
-        user-table-fields-var-map (into {} (for [[table columns] merged-table-map]
-                                             [(keyword (str (name user-sym) "-" (name table) "-fields-var"))
-                                              columns]))]
-    `(swap! user-tables-vars merge ~user-table-fields-var-map)))
+                                group-table-maps)]
+    `(swap! users-tables-columns assoc ~(keyword user-sym) ~merged-table-map)))
 
 (defmacro with-user [user-sym & body]
-  (let [all-users-tables-vars @user-tables-vars
-        user-table-vars (select-keys all-users-tables-vars
-                                     (filter #(.startsWith (name %) (str (name user-sym) "-"))
-                                             (keys all-users-tables-vars)))
-        syms-with-values (for [[kw val] user-table-vars]
-                           [(symbol (.substring (name kw)
-                                                (inc (count (name user-sym)))))
-                            val])]
-    `(let [~@(apply concat syms-with-values)]
+  (let [tables-columns (get @users-tables-columns (keyword user-sym))
+        table-syms-with-columns (for [[table-kw columns] tables-columns]
+                                  [(symbol (str (name table-kw) "-fields-var")) columns])]
+    `(let [~@(apply concat table-syms-with-columns)]
        ~@body)))
