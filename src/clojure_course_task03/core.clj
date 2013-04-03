@@ -231,17 +231,18 @@
        (swap! groups-tables-columns assoc ~group-kw ~tables-columns)))) ; saving this for further use by user macro
 
 
+(defn merge-columns [cols1 cols2]
+  (let [columns-set (into #{} (concat cols1 cols2))]
+    (if (contains? columns-set :all)
+      [:all]
+      (vec columns-set))))
+
 (defonce users-tables-columns (atom {}))
 
 (defmacro user [user-sym [belongs-to-sym & group-syms]]
   (assert (= 'belongs-to belongs-to-sym) (str "Expected symbol belongs-to instead of " belongs-to-sym))
   (let [group-table-maps (vals (select-keys @groups-tables-columns (map keyword group-syms)))
-        merged-table-map (apply merge-with
-                                #(let [columns-set (into #{} (concat %1 %2))]
-                                   (if (contains? columns-set :all)
-                                     [:all]
-                                     (vec columns-set)))
-                                group-table-maps)]
+        merged-table-map (apply merge-with merge-columns group-table-maps)]
     `(swap! users-tables-columns assoc ~(keyword user-sym) ~merged-table-map)))
 
 (defmacro with-user [user-sym & body]
