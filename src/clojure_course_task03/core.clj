@@ -1,6 +1,7 @@
 (ns clojure-course-task03.core
   (:require [clojure.set]
-            [clojure.string :as s]))
+            [clojure.string :as s])
+  (:gen-class))
 
 (defn join* [table-name conds]
   (let [op (first conds)
