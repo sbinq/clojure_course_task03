@@ -216,6 +216,7 @@
                                        (assert (= '-> arrow) (str "Expected symbol -> instead of " arrow))
                                        [(keyword table) (mapv keyword columns)])
                                      (partition-all 3 body)))
+        _ (println "group compile -> tables-columns" tables-columns)
         group-select-fns (map (fn [[table-kw columns]]
                                 (let [table-name (name table-kw)
                                       fn-sym (symbol (str "select-" (s/lower-case (name group-kw)) "-" table-name))
@@ -225,8 +226,10 @@
                                      (let [~fields-var-sym ~columns]
                                        (select ~table-sym
                                                (~(symbol "fields") ~@columns))))))
-                              tables-columns)]
+                              tables-columns)
+        _ (println "group compile -> group-select-fns" group-select-fns)] 
     `(do
+       (println "group runtime -> ~table-columns" ~tables-columns)
        ~@group-select-fns
        (swap! groups-tables-columns assoc ~group-kw ~tables-columns)))) ; saving this for further use by user macro
 
@@ -241,12 +244,35 @@
 (defmacro user [user-sym [belongs-to-sym & group-syms]]
   (assert (= 'belongs-to belongs-to-sym) (str "Expected symbol belongs-to instead of " belongs-to-sym))
   (let [user-groups-tables-columns (vals (select-keys @groups-tables-columns (map keyword group-syms)))
-        merged-user-tables-columns (apply merge-with merge-columns user-groups-tables-columns)]
-    `(swap! users-tables-columns assoc ~(keyword user-sym) ~merged-user-tables-columns)))
+        _ (println "user compile -> user-groups-tables-columns" user-groups-tables-columns)
+        merged-user-tables-columns (apply merge-with merge-columns user-groups-tables-columns)
+        _ (println "user compile -> merged-user-tables-columns" merged-user-tables-columns)]
+    `(do
+       (println "user runtime -> ~merged-user-tables-columns" ~merged-user-tables-columns)
+       (swap! users-tables-columns assoc ~(keyword user-sym) ~merged-user-tables-columns))))
 
 (defmacro with-user [user-sym & body]
   (let [tables-columns (get @users-tables-columns (keyword user-sym))
+        _ (println "with-user compile -> tables-columns" tables-columns)
         table-syms-with-columns (for [[table-kw columns] tables-columns]
-                                  [(table-fields-var-sym table-kw) columns])]
-    `(let [~@(apply concat table-syms-with-columns)]
+                                  [(table-fields-var-sym table-kw) columns])
+        _ (println "with-user compile -> table-syms-with-columns" table-syms-with-columns)]
+    `(let [~'_ (println "with-user runtime -> @users-tables-columns" @users-tables-columns)
+           ~@(apply concat table-syms-with-columns)]
        ~@body)))
+
+
+(println "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+(def boo (do (println "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy") 42))
+
+(group G1
+       T1 -> [:c1 :c2 :c3])
+
+(user U1
+      (belongs-to G1))
+
+(defn -main []
+  (let [query (with-user U1
+                (select T1
+                        (fields :c2 :c4)))]
+    (println "T1 query with U1 is" query)))
