@@ -1,6 +1,6 @@
 (ns clojure-course-task03.core
   (:require [clojure.set]
-            [clojure.string :as s])
+            [clojure.string :refer [lower-case]])
   (:gen-class))
 
 (defn join* [table-name conds]
@@ -217,7 +217,7 @@
                                      (partition-all 3 body)))
         group-select-fns (map (fn [[table-kw columns]]
                                 (let [table-name (name table-kw)
-                                      fn-sym (symbol (str "select-" (s/lower-case (name group-sym)) "-" table-name))
+                                      fn-sym (symbol (str "select-" (lower-case (name group-sym)) "-" table-name))
                                       fields-var-sym (table-fields-var-sym table-name)
                                       table-sym (symbol table-name)]
                                   `(defn ~fn-sym []
