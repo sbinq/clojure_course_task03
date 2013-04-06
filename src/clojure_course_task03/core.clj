@@ -239,8 +239,7 @@
   (defonce users-tables-columns (atom {}))
   (let [user-tables-columns-seq (vals (select-keys @groups-tables-columns (map keyword group-syms)))
         merged-user-tables-columns (apply merge-with merge-columns user-tables-columns-seq)]
-    (swap! users-tables-columns assoc (keyword user-sym) merged-user-tables-columns)
-    @users-tables-columns)) ; value output just for convenience when evaluating macro manually
+    (swap! users-tables-columns assoc (keyword user-sym) merged-user-tables-columns)))
 
 (defmacro with-user [user-sym & body]
   (let [tables-columns (get @users-tables-columns (keyword user-sym))
