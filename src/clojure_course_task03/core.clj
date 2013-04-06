@@ -209,30 +209,24 @@
 (defn table-fields-var-sym [table]
   (symbol (str (name table) "-fields-var")))
 
-(defonce groups-tables-columns (atom {}))
-
 (defmacro group [group-sym & body]
-  (let [group-kw (keyword group-sym)
-        tables-columns (into {} (map (fn [[table arrow columns]]
-                                       (assert (= '-> arrow) (str "Expected symbol -> instead of " arrow))
+  (defonce groups-tables-columns (atom {}))
+  (let [tables-columns (into {} (map (fn [[table arrow columns]]
+                                       (assert (= '-> arrow))
                                        [(keyword table) (mapv keyword columns)])
                                      (partition-all 3 body)))
-        _ (println "group compile -> tables-columns" tables-columns)
         group-select-fns (map (fn [[table-kw columns]]
                                 (let [table-name (name table-kw)
-                                      fn-sym (symbol (str "select-" (s/lower-case (name group-kw)) "-" table-name))
+                                      fn-sym (symbol (str "select-" (s/lower-case (name group-sym)) "-" table-name))
                                       fields-var-sym (table-fields-var-sym table-name)
                                       table-sym (symbol table-name)]
                                   `(defn ~fn-sym []
                                      (let [~fields-var-sym ~columns]
                                        (select ~table-sym
                                                (~(symbol "fields") ~@columns))))))
-                              tables-columns)
-        _ (println "group compile -> group-select-fns" group-select-fns)] 
-    `(do
-       (println "group runtime -> ~table-columns" ~tables-columns)
-       ~@group-select-fns
-       (swap! groups-tables-columns assoc ~group-kw ~tables-columns)))) ; saving this for further use by user macro
+                              tables-columns)]
+    (swap! groups-tables-columns assoc (keyword group-sym) tables-columns) ; saving this for further use by user macro
+    `(do ~@group-select-fns)))
 
 (defn merge-columns [cols1 cols2]
   (let [columns-set (into #{} (concat cols1 cols2))]
@@ -240,40 +234,49 @@
       [:all]
       (vec columns-set))))
 
-(defonce users-tables-columns (atom {}))
-
 (defmacro user [user-sym [belongs-to-sym & group-syms]]
-  (assert (= 'belongs-to belongs-to-sym) (str "Expected symbol belongs-to instead of " belongs-to-sym))
+  (assert (= 'belongs-to belongs-to-sym))
+  (defonce users-tables-columns (atom {}))
   (let [user-groups-tables-columns (vals (select-keys @groups-tables-columns (map keyword group-syms)))
-        _ (println "user compile -> user-groups-tables-columns" user-groups-tables-columns)
-        merged-user-tables-columns (apply merge-with merge-columns user-groups-tables-columns)
-        _ (println "user compile -> merged-user-tables-columns" merged-user-tables-columns)]
-    `(do
-       (println "user runtime -> ~merged-user-tables-columns" ~merged-user-tables-columns)
-       (swap! users-tables-columns assoc ~(keyword user-sym) ~merged-user-tables-columns))))
+        merged-user-tables-columns (apply merge-with merge-columns user-groups-tables-columns)]
+    (swap! users-tables-columns assoc (keyword user-sym) merged-user-tables-columns)
+    @users-tables-columns)) ; value output just for convenience when evaluating macro manually
 
 (defmacro with-user [user-sym & body]
   (let [tables-columns (get @users-tables-columns (keyword user-sym))
-        _ (println "with-user compile -> tables-columns" tables-columns)
         table-syms-with-columns (for [[table-kw columns] tables-columns]
-                                  [(table-fields-var-sym table-kw) columns])
-        _ (println "with-user compile -> table-syms-with-columns" table-syms-with-columns)]
-    `(let [~'_ (println "with-user runtime -> @users-tables-columns" @users-tables-columns)
-           ~@(apply concat table-syms-with-columns)]
+                                  [(table-fields-var-sym table-kw) columns])]
+    `(let [~@(apply concat table-syms-with-columns)]
        ~@body)))
 
-
-(println "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-(def boo (do (println "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy") 42))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (group G1
        T1 -> [:c1 :c2 :c3])
-
 (user U1
       (belongs-to G1))
 
+;;; dumping this to check they have value at compile time only - not runtime
+(println "namespace level: groups-tables-columns value is" groups-tables-columns)
+(println "namespace level: users-tables-columns value is" users-tables-columns)
+
 (defn -main []
+  ;; group/user defined at namespace level
   (let [query (with-user U1
                 (select T1
                         (fields :c2 :c4)))]
-    (println "T1 query with U1 is" query)))
+    (println "T1 query with U1 is" query))
+  
+  ;; try with definition inside function also
+  (group G2
+         T2 -> [:c5 :c6 :c7])
+  (user U2
+        (belongs-to G2))
+  (let [query (with-user U2
+                (select T2
+                        (fields :c6 :c8)))]
+    (println "T2 query with U2 is" query))
+  
+  ;; also verify no difference here for defintions inside function
+  (println "function level: groups-tables-columns value is" groups-tables-columns)
+  (println "function level: users-tables-columns value is" users-tables-columns))
